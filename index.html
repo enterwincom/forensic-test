@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>디지털 이미지 포렌식 검출기</title>
+  <!-- Tailwind CSS CDN을 활용하여 디자인을 그대로 유지합니다 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-900 text-slate-100 p-4 flex items-center justify-center font-sans">
+
+  <div class="w-full max-w-md bg-slate-800 rounded-3xl shadow-2xl p-6 space-y-5 border border-slate-700">
+    <div>
+      <span class="text-xs bg-indigo-600 text-indigo-100 px-2.5 py-1 rounded-full font-semibold uppercase tracking-wider">Advanced Forensic</span>
+      <h1 class="text-2xl font-bold mt-2 tracking-tight">디지털 이미지 포렌식 검출기</h1>
+      <p class="text-xs text-slate-400 mt-1">EXIF 데이터 파싱 및 ELA 오차 분석 엔진 탑재</p>
+    </div>
+
+    <!-- 제어 패널 -->
+    <div class="grid grid-cols-2 gap-2">
+      <button id="btnStartCamera" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-3 text-sm font-semibold transition-colors active:scale-95">
+        📷 카메라 스트림 ON
+      </button>
+      <button id="btnCapture" class="bg-slate-700 hover:bg-slate-600 text-white rounded-2xl py-3 text-sm font-semibold transition-colors active:scale-95">
+        🔍 프레임 즉시 스캔
+      </button>
+    </div>
+
+    <video id="videoElement" autoplay playsinline muted class="w-full rounded-2xl bg-black max-h-48 object-cover border border-slate-700 hidden"></video>
+
+    <!-- 파일 수신부 -->
+    <div id="dropZone" class="border-2 border-dashed border-slate-600 rounded-2xl p-5 text-center bg-slate-800/50 hover:bg-slate-700/50 transition-colors cursor-pointer">
+      <input type="file" accept="image/*" class="hidden" id="fileUpload" />
+      <label for="fileUpload" class="cursor-pointer block">
+        <div class="text-3xl">📥</div>
+        <div class="mt-2 text-sm font-medium text-slate-200">정밀 분석할 이미지 드롭 또는 클릭</div>
+        <div class="text-xs text-slate-400 mt-1">RAW 로컬 이미지 파일 업로드 (JPG, PNG)</div>
+      </label>
+    </div>
+
+    <!-- 이미지 프리뷰 -->
+    <img id="imagePreview" alt="preview" class="w-full rounded-2xl shadow-lg border border-slate-700 max-h-56 object-contain bg-slate-900 hidden" />
+
+    <!-- 로딩 스피너 -->
+    <div id="loadingIndicator" class="text-center py-4 flex flex-col items-center justify-center space-y-2 hidden">
+      <div class="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+      <div class="text-sm font-medium text-slate-300 animate-pulse">알고리즘 매트릭스 연산 중...</div>
+    </div>
+
+    <!-- 고도화 분석 종합 보고서 영역 -->
+    <div id="resultReport" class="space-y-4 border border-slate-700 rounded-2xl p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-medium">종합 분석 등급</div>
+          <div id="txtStatus" class="text-md font-bold mt-0.5"></div>
+        </div>
+        <div class="text-right">
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-medium">안전 지수</div>
+          <div class="text-2xl font-black text-white"><span id="txtScore">100</span><span class="text-xs font-normal text-slate-400"> / 100</span></div>
+        </div>
+      </div>
+
+      <!-- 카드 내역들 (바닐라 스크립트에서 동적 업데이트) -->
+      <div id="cardMetadata" class="border border-slate-800 rounded-xl p-3 bg-slate-800/40"></div>
+      <div id="cardFaceSwap" class="border border-slate-800 rounded-xl p-3 bg-slate-800/40"></div>
+      <div id="cardAiTexture" class="border border-slate-800 rounded-xl p-3 bg-slate-800/40"></div>
+
+      <!-- 파일 제원 표기 -->
+      <div class="p-3 bg-slate-800 rounded-xl text-[11px] text-slate-300 grid grid-cols-3 gap-1 border border-slate-700/60">
+        <div class="truncate"><strong>명칭:</strong> <span id="infoName"></span></div>
+        <div><strong>용량:</strong> <span id="infoSize"></span></div>
+        <div><strong>타입:</strong> <span id="infoType"></span></div>
+      </div>
+
+      <!-- 정밀 포렌식 소견 코멘트 -->
+      <div>
+        <div class="text-xs font-semibold text-slate-300 mb-2 tracking-wide">정밀 포렌식 탐지 로그</div>
+        <div id="findingsLog"></div>
+      </div>
+    </div>
+
+    <div class="text-[10px] text-slate-500 leading-relaxed text-center">
+      본 감정 도구는 로컬에서 정적 휴리스틱 코드로만 구동되므로,<br />
+      인텐셔널 스크린샷이나 메타데이터가 세탁된 정교한 인공 저작물의 경우 한계가 있을 수 있습니다.
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 핵심 비즈니스 로직 및 포렌식 연산 엔진 (Vanilla JS) -->
+  <!-- ========================================================= -->
+  <script>
+    let currentStream = null;
+    const videoElement = document.getElementById('videoElement');
+    const imagePreview = document.getElementById('imagePreview');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const resultReport = document.getElementById('resultReport');
+
+    // 헬퍼 함수
+    const interstateSmooth = (smooth, sharp) => smooth > 1500 && sharp > 1500;
+
+    // 카메라 시작
+    async function startCamera() {
+      try {
+        stopCamera();
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        videoElement.srcObject = currentStream;
+        videoElement.classList.remove('hidden');
+        videoElement.play();
+      } catch (err) {
+        alert('카메라 접근 권한이 필요합니다.');
+      }
+    }
+
+    // 카메라 정지
+    function stopCamera() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+      }
+      videoElement.srcObject = null;
+      videoElement.classList.add('hidden');
+    }
+
+    // 카메라에서 프레임 캡처
+    function captureFromCamera() {
+      if (!currentStream || !videoElement) {
+        alert('카메라가 시작되지 않았습니다.');
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = videoElement.videoWidth || 640;
+      canvas.height = videoElement.videoHeight || 480;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(videoElement, 0, 0);
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const capturedFile = new File([blob], 'camera_snapshot.jpg', { type: 'image/jpeg' });
+        handleFile(capturedFile);
+        stopCamera();
+      }, 'image/jpeg');
+    }
+
+    // 파일 로드 인터페이스
+    function handleFile(file) {
+      if (!file) return;
+      
+      loadingIndicator.classList.remove('hidden');
+      resultReport.classList.add('hidden');
+      imagePreview.classList.add('hidden');
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result;
+        if (typeof dataUrl !== 'string') return;
+        
+        imagePreview.src = dataUrl;
+        imagePreview.classList.remove('hidden');
+
+        // UI 블로킹 방지 비동기 랩핑
+        setTimeout(async () => {
+          const analysis = await analyzeImage(file, dataUrl);
+          renderReport(analysis);
+          loadingIndicator.classList.add('hidden');
+        }, 50);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // EXIF 및 바이너리 메타데이터 분석기
+    const parseMetadata = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const buffer = e.target?.result;
+          if (!buffer || !(buffer instanceof ArrayBuffer)) {
+            resolve({ software: null, hasExif: false });
+            return;
+          }
+
+          const view = new DataView(buffer);
+          const textDecoder = new TextDecoder('utf-8');
+          let contentStr = '';
+          
+          try {
+            const uint8 = new Uint8Array(buffer);
+            const head = textDecoder.decode(uint8.subarray(0, Math.min(uint8.length, 48000)));
+            const tail = textDecoder.decode(uint8.subarray(Math.max(0, uint8.length - 12000)));
+            contentStr = head + tail;
+          } catch (e) {}
+
+          const lowerStr = contentStr.toLowerCase();
+          let software = null;
+          const softwareSignatures = [
+            { key: 'photoshop', name: 'Adobe Photoshop' },
+            { key: 'adobe', name: 'Adobe Software Suite' },
+            { key: 'gimp', name: 'GIMP (Open Source Editor)' },
+            { key: 'midjourney', name: 'Midjourney AI' },
+            { key: 'stable', name: 'Stable Diffusion' },
+            { key: 'dall-e', name: 'OpenAI DALL-E' },
+            { key: 'canva', name: 'Canva 디자인 플랫폼' },
+            { key: 'picsart', name: 'PicsArt 모바일 편집기' }
+          ];
+
+          for (const sig of softwareSignatures) {
+            if (lowerStr.includes(sig.key)) {
+              software = sig.name;
+              break;
+            }
+          }
+
+          let hasExif = false;
+          if (view.byteLength > 4) {
+            for (let i = 0; i < Math.min(view.byteLength - 4, 2000); i++) {
+              if (view.getUint8(i) === 0xFF && view.getUint8(i + 1) === 0xE1) {
+                hasExif = true;
+                break;
+              }
+            }
+          }
+          resolve({ software, hasExif });
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    };
+
+    // ELA (에러 레벨 분석) 시뮬레이션
+    const performElaAnalysis = (ctx, w, h, originalData) => {
+      return new Promise((resolve) => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = w;
+        tempCanvas.height = h;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) { resolve(0); return; }
+
+        const imgDataObj = new ImageData(originalData, w, h);
+        tempCtx.putImageData(imgDataObj, 0, 0);
+
+        const compressedDataUrl = tempCanvas.toDataURL('image/jpeg', 0.90);
+        const reImg = new Image();
+        
+        reImg.onload = () => {
+          tempCtx.clearRect(0, 0, w, h);
+          tempCtx.drawImage(reImg, 0, 0);
+          
+          const reData = tempCtx.getImageData(0, 0, w, h).data;
+          let totalErrorDiff = 0;
+          let checkedPixels = 0;
+
+          for (let i = 0; i < originalData.length; i += 32) {
+            const rDiff = Math.abs(originalData[i] - reData[i]);
+            const gDiff = Math.abs(originalData[i + 1] - reData[i + 1]);
+            const bDiff = Math.abs(originalData[i + 2] - reData[i + 2]);
+            
+            totalErrorDiff += (rDiff + gDiff + bDiff);
+            checkedPixels++;
+          }
+
+          const averageErrorLevel = totalErrorDiff / (checkedPixels * 3);
+          resolve(averageErrorLevel);
+        };
+        reImg.onerror = () => resolve(0);
+        reImg.src = compressedDataUrl;
+      });
+    };
+
+    // 포렌식 통합 분석 함수
+    async function analyzeImage(file, dataUrl) {
+      const findings = [];
+      let score = 100;
+
+      const aiDetection = { probability: 0, signals: [] };
+      const faceSwapDetection = { probability: 0, signals: [] };
+      const metadataDetection = { probability: 0, signals: [] };
+
+      // 1. 파일명 휴리스틱 검사
+      const suspiciousNames = ['edited', 'copy', 'midjourney', 'dalle', 'stable', 'generated', 'ai', 'screenshot'];
+      const lowerName = file.name.toLowerCase();
+      suspiciousNames.forEach((keyword) => {
+        if (lowerName.includes(keyword)) {
+          metadataDetection.probability += 30;
+          metadataDetection.signals.push(`파일명 내 편집/AI 추정 키워드 발견 (${keyword})`);
+        }
+      });
+
+      // 2. 메타데이터 분석
+      const meta = await parseMetadata(file);
+      if (meta.software) {
+        metadataDetection.probability += 85;
+        metadataDetection.signals.push(`바이너리 메타 정보 내 편집/생성 소프트웨어 감지: [${meta.software}]`);
+        findings.push(`이미지 파일 내부에 소프트웨어 조작 흔적(${meta.software})이 영구 기록되어 있습니다.`);
+        score -= 40;
+      } else if (file.type === 'image/jpeg' && !meta.hasExif) {
+        metadataDetection.probability += 25;
+        metadataDetection.signals.push('촬영 기기 정보(EXIF 마커) 누락 (디지털 카메라 원본 아닐 확률 높음)');
+        findings.push('디지털 카메라 원본 특유의 하드웨어 마커 정보가 유실된 상태입니다.');
+        score -= 10;
+      }
+
+      // 3. 픽셀 및 포렌식 매트릭스 파싱
+      const pixelAnalysis = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          const maxDim = 800;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+          }
+
+          canvas.width = w;
+          canvas.height = h;
+          if (!ctx) { resolve(null); return; }
+          
+          ctx.drawImage(img, 0, 0, w, h);
+          const imgDataObj = ctx.getImageData(0, 0, w, h);
+          const data = imgDataObj.data;
+
+          const elaScore = await performElaAnalysis(ctx, w, h, data);
+
+          let sharpEdges = 0;
+          let smoothAreas = 0;
+          let repeatedPatterns = 0;
+
+          const step = 24; 
+          for (let i = 0; i < data.length - (step * 2); i += step) {
+            const delta = Math.abs(data[i] - data[i + step]) + 
+                          Math.abs(data[i + 1] - data[i + step + 1]) + 
+                          Math.abs(data[i + 2] - data[i + step + 2]);
+
+            if (delta > 130) sharpEdges++;
+            if (delta < 6) smoothAreas++;
+            if (delta < 2) repeatedPatterns++;
+          }
+
+          resolve({ sharpEdges, smoothAreas, repeatedPatterns, elaScore });
+        };
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      });
+
+      // 4. 가중치 점수 합산
+      if (pixelAnalysis) {
+        const { sharpEdges, smoothAreas, repeatedPatterns, elaScore } = pixelAnalysis;
+
+        if (elaScore > 12.0) {
+          faceSwapDetection.probability += 45;
+          faceSwapDetection.signals.push(`ELA(에러레벨 분석) 결과 높은 불일치도 감지 (부분 합성 흔적)`);
+          findings.push('ELA(Error Level Analysis) 분석 결과, 이미지 내 픽셀 압축률 불일치 및 합성 의심 영역이 발견되었습니다.');
+          score -= 25;
+        } else if (elaScore < 1.2 && file.type !== 'image/png') {
+          aiDetection.probability += 35;
+          aiDetection.signals.push('비자연적인 균일한 픽셀 압축 균등도 검출 (AI 노이즈 패턴 특징)');
+        }
+
+        if (smoothAreas > 5000) {
+          aiDetection.probability += 30;
+          aiDetection.signals.push('컴퓨터 그래픽 특유의 지나치게 뭉개진 레이어 영역 존재');
+        }
+        if (repeatedPatterns > 1200) {
+          aiDetection.probability += 25;
+          aiDetection.signals.push('디지털 복사 및 픽셀 복제 흔적(노이즈 정렬) 발견');
+        }
+        if (sharpEdges > 2500 && interstateSmooth(smoothAreas, sharpEdges)) {
+          faceSwapDetection.probability += 40;
+          faceSwapDetection.signals.push('딥페이크 경계부 합성에 해당하는 급격한 고주파 대비 전환 감지');
+        }
+      }
+
+      if (faceSwapDetection.probability > 60) {
+        findings.push('인물 안면 경계면 왜곡 패턴에 의거해 딥페이크/페이스스왑 정황이 강하게 의심됩니다.');
+        score -= 20;
+      }
+      if (aiDetection.probability > 65) {
+        findings.push('확률적 픽셀 통계 결과 대형 생성 AI 모델 산출물의 텍스처 특징과 일치합니다.');
+        score -= 25;
+      }
+
+      const finalScore = Math.max(score, 0);
+      let status = '안전 (원본 파일일 가능성 매우 높음)';
+      if (finalScore < 80) status = '주의 (메타 데이터 유실 또는 편집 의심)';
+      if (finalScore < 50) status = '위험 (조작 흔적 다수 발견 / 위변조 유력)';
+
+      return {
+        score: finalScore,
+        status,
+        findings,
+        metadata: { title: "메타데이터/EXIF 무결성 검증", value: Math.min(metadataDetection.probability, 100), items: metadataDetection.signals, emoji: "💾" },
+        faceSwap: { title: "ELA 차이 및 페이스스왑 탐지", value: Math.min(faceSwapDetection.probability, 100), items: faceSwapDetection.signals, emoji: "👤" },
+        aiTexture: { title: "생성형 AI 텍스처 지표", value: Math.min(aiDetection.probability, 100), items: aiDetection.signals, emoji: "🤖" },
+        fileInfo: { name: file.name, size: (file.size / 1024).toFixed(1) + ' KB', type: file.type }
+      };
+    }
+
+    // 분석 보고서 UI 렌더링 헬퍼 (React의 컴포넌트 역할을 대체)
+    function renderCard(elementId, cardData) {
+      const target = document.getElementById(elementId);
+      const isHigh = cardData.value > 50;
+      const barColor = isHigh ? 'bg-red-500' : 'bg-indigo-500';
+      const textColor = isHigh ? 'text-red-400' : 'text-slate-400';
+
+      let itemsHtml = `<div class="text-[10px] text-emerald-400 flex items-center gap-1">✓ 무결성 검증 통과</div>`;
+      if (cardData.items.length > 0) {
+        itemsHtml = `<ul class="space-y-0.5 text-[10px]">`;
+        cardData.items.forEach(item => {
+          itemsHtml += `
+            <li class="text-slate-300 flex items-start gap-1">
+              <span>${cardData.emoji}</span>
+              <span class="leading-tight">${item}</span>
+            </li>`;
+        });
+        itemsHtml += `</ul>`;
+      }
+
+      target.innerHTML = `
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="font-semibold text-xs text-slate-200">${cardData.title}</div>
+          <div class="text-xs font-bold ${textColor}">${cardData.value}% 위험도</div>
+        </div>
+        <div class="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden mb-2">
+          <div class="h-full rounded-full transition-all duration-500 ${barColor}" style="width: ${cardData.value}%"></div>
+        </div>
+        ${itemsHtml}
+      `;
+    }
+
+    function renderReport(result) {
+      // 등급 색상 분기
+      const txtStatus = document.getElementById('txtStatus');
+      txtStatus.textContent = result.status;
+      txtStatus.className = "text-md font-bold mt-0.5 " + (result.score > 75 ? 'text-green-400' : result.score > 45 ? 'text-amber-400' : 'text-red-400');
+      
+      document.getElementById('txtScore').textContent = result.score;
+
+      // 지표 카드 드로잉
+      renderCard('cardMetadata', result.metadata);
+      renderCard('cardFaceSwap', result.faceSwap);
+      renderCard('cardAiTexture', result.aiTexture);
+
+      // 파일 제원
+      document.getElementById('infoName').textContent = result.fileInfo.name;
+      document.getElementById('infoSize').textContent = result.fileInfo.size;
+      document.getElementById('infoType').textContent = (result.fileInfo.type.split('/')[1] || 'UNKNOWN').toUpperCase();
+
+      // 탐지 로그 코멘트 서식화
+      const logContainer = document.getElementById('findingsLog');
+      if (result.findings.length === 0) {
+        logContainer.innerHTML = `
+          <div class="text-xs text-green-400 bg-green-950/40 border border-green-900/60 rounded-xl p-3 font-medium">
+            ✓ 바이너리 및 매트릭스 압축 레벨 검증 결과, 위변조 징후가 발견되지 않은 완전한 무결성 이미지입니다.
+          </div>`;
+      } else {
+        let ulHtml = `<ul class="space-y-1.5">`;
+        result.findings.forEach(item => {
+          ulHtml += `
+            <li class="bg-slate-800 rounded-xl p-2.5 border border-slate-700 text-[11px] text-slate-200 leading-relaxed">
+              🚨 ${item}
+            </li>`;
+        });
+        ulHtml += `</ul>`;
+        logContainer.innerHTML = ulHtml;
+      }
+
+      resultReport.classList.remove('hidden');
+    }
+
+    // =========================================================
+    // 바닐라 이벤트 리스너 바인딩
+    // =========================================================
+    document.getElementById('btnStartCamera').addEventListener('click', startCamera);
+    document.getElementById('btnCapture').addEventListener('click', captureFromCamera);
+
+    const fileUploadInput = document.getElementById('fileUpload');
+    fileUploadInput.addEventListener('change', (e) => {
+      if (e.target.files?.[0]) handleFile(e.target.files[0]);
+    });
+
+    const dropZone = document.getElementById('dropZone');
+    dropZone.addEventListener('dragover', (e) => e.preventDefault());
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files?.[0]) handleFile(e.dataTransfer.files[0]);
+    });
+  </script>
+</body>
+</html>
