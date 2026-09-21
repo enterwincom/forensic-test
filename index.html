@@ -1,11 +1,21 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="select-none">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>디지털 이미지 포렌식 검출기</title>
-  <!-- Tailwind CSS CDN을 활용하여 디자인을 그대로 유지합니다 -->
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 텍스트 선택 및 드래그 전역 차단 CSS */
+    * {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+  </style>
 </head>
 <body class="min-h-screen bg-slate-900 text-slate-100 p-4 flex items-center justify-center font-sans">
 
@@ -39,7 +49,7 @@
     </div>
 
     <!-- 이미지 프리뷰 -->
-    <img id="imagePreview" alt="preview" class="w-full rounded-2xl shadow-lg border border-slate-700 max-h-56 object-contain bg-slate-900 hidden" />
+    <img id="imagePreview" alt="preview" class="w-full rounded-2xl shadow-lg border border-slate-700 max-h-56 object-contain bg-slate-900 hidden" draggable="false" />
 
     <!-- 로딩 스피너 -->
     <div id="loadingIndicator" class="text-center py-4 flex flex-col items-center justify-center space-y-2 hidden">
@@ -85,9 +95,70 @@
     </div>
   </div>
 
-  <!-- ========================================================= -->
+  <!-- 보안 제어 스크립트 (우클릭, 드래그, 단축키 차단) -->
+  <script>
+    // 1. 우클릭 컨텍스트 메뉴 차단
+    document.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      return false;
+    });
+
+    // 2. 텍스트 및 이미지 드래그 시작 차단
+    document.addEventListener('dragstart', function(e) {
+      e.preventDefault();
+      return false;
+    });
+
+    // 3. 텍스트 선택 시작 차단
+    document.addEventListener('selectstart', function(e) {
+      e.preventDefault();
+      return false;
+    });
+
+    // 4. 개발자 도구 및 소스 보기 키보드 단축키 차단
+    document.addEventListener('keydown', function(e) {
+      // F12 차단
+      if (e.keyCode === 123 || e.key === 'F12') {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+
+      // Ctrl + Shift + I (개발자 도구)
+      // Ctrl + Shift + J (콘솔)
+      // Ctrl + Shift + C (요소 검사)
+      // Ctrl + Shift + K (Firefox 콘솔)
+      if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67 || e.keyCode === 75 || e.key === 'I' || e.key === 'J' || e.key === 'C' || e.key === 'K')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+
+      // Cmd + Option + I / Cmd + Option + J / Cmd + Option + C (macOS)
+      if (e.metaKey && e.altKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67 || e.key === 'i' || e.key === 'j' || e.key === 'c')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+
+      // Ctrl + U / Cmd + Option + U (페이지 소스 보기)
+      if ((e.ctrlKey && (e.keyCode === 85 || e.key === 'u' || e.key === 'U')) || 
+          (e.metaKey && e.altKey && (e.keyCode === 85 || e.key === 'u' || e.key === 'U'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+
+      // Ctrl + S / Cmd + S (페이지 저장 차단)
+      if ((e.ctrlKey || e.metaKey) && (e.keyCode === 83 || e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    });
+  </script>
+
   <!-- 핵심 비즈니스 로직 및 포렌식 연산 엔진 (Vanilla JS) -->
-  <!-- ========================================================= -->
   <script>
     let currentStream = null;
     const videoElement = document.getElementById('videoElement');
@@ -401,7 +472,7 @@
       };
     }
 
-    // 분석 보고서 UI 렌더링 헬퍼 (React의 컴포넌트 역할을 대체)
+    // 분석 보고서 UI 렌더링 헬퍼
     function renderCard(elementId, cardData) {
       const target = document.getElementById(elementId);
       const isHigh = cardData.value > 50;
@@ -473,9 +544,7 @@
       resultReport.classList.remove('hidden');
     }
 
-    // =========================================================
-    // 바닐라 이벤트 리스너 바인딩
-    // =========================================================
+    // 이벤트 리스너 바인딩
     document.getElementById('btnStartCamera').addEventListener('click', startCamera);
     document.getElementById('btnCapture').addEventListener('click', captureFromCamera);
 
